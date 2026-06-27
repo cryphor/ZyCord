@@ -8,28 +8,117 @@
   const BADGE_ID = 'zycord_creator_badge';
 
   const STYLES = `
-    .${SECTION_CLASS} {
+    .${SECTION_CLASS}.zycord-panel {
       padding: 60px 40px 80px;
       max-width: 740px;
     }
-    .zycord-repo-link {
+    .zycord-header {
+      margin-bottom: 24px;
+    }
+    .zycord-muted {
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .zycord-block {
+      margin-bottom: 28px;
+    }
+    .zycord-block-title {
+      margin-bottom: 12px;
+    }
+    .zycord-card {
+      background: var(--background-secondary);
+      border: 1px solid var(--border-faint);
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .zycord-card-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 8px 0;
+    }
+    .zycord-card-row + .zycord-card-row {
+      border-top: 1px solid var(--border-faint);
+    }
+    .zycord-card-label {
+      color: var(--header-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+    .zycord-card-value {
+      color: var(--text-normal);
+      font-size: 14px;
+      text-align: right;
+      word-break: break-word;
+    }
+    .zycord-card-value code {
+      font-family: var(--font-code);
+      font-size: 13px;
+      background: var(--background-tertiary);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .zycord-link {
       color: var(--text-link);
       cursor: pointer;
+      text-decoration: none;
     }
-    .zycord-repo-link:hover {
+    .zycord-link:hover {
       text-decoration: underline;
     }
-    .zycord-update-entry {
-      margin-top: 0.5em;
-      margin-bottom: 0.5em;
+    .zycord-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-normal);
     }
-    .zycord-update-entry code {
+    .zycord-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .zycord-status-dot.ok { background: #3ba55c; }
+    .zycord-status-dot.warn { background: #faa81a; }
+    .zycord-status-dot.err { background: #ed4245; }
+    .zycord-status-dot.load {
+      background: var(--text-muted);
+      animation: zycord-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes zycord-pulse {
+      0%, 100% { opacity: 0.35; }
+      50% { opacity: 1; }
+    }
+    .zycord-update-item {
+      margin-top: 12px;
+      padding: 12px 14px;
+      background: var(--background-tertiary);
+      border-radius: 6px;
+      border-left: 3px solid #faa81a;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--text-normal);
+    }
+    .zycord-update-item code {
       font-family: var(--font-code);
-      font-size: 0.9em;
+      font-size: 13px;
     }
-    .zycord-update-message {
-      margin-left: 0.5em;
-      color: var(--text-default);
+    .zycord-update-meta {
+      margin-top: 6px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .zycord-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
     }
     .zycord-profile-badge {
       width: 22px;
@@ -62,9 +151,9 @@
 
   async function fetchUpdates() {
     const res = await fetch(`${ZYCORD_API}/updates`);
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.error || `Failed (${res.status})`);
+      throw new Error(data.error || `Request failed (${res.status})`);
     }
     return data;
   }
@@ -107,7 +196,6 @@
     const Button = findByProps('Sizes', 'Looks', 'Colors') || window.Vencord.Webpack.Common.Button;
     const Forms = findByProps('FormTitle', 'FormSection', 'FormDivider') || {};
     const Margins = findByProps('marginBottom20', 'marginTop20', 'marginReset') || {};
-    const Flex = findByProps('align', 'justify', 'wrap') || null;
     const Toasts = findByProps('show', 'Type', 'Position') || null;
     const React = window.Vencord.Webpack.Common.React;
 
@@ -116,10 +204,8 @@
       Button,
       FormTitle: Forms.FormTitle,
       FormText: Forms.FormText,
-      FormSection: Forms.FormSection,
       FormDivider: Forms.FormDivider,
       Margins,
-      Flex,
       Toasts,
       React,
       r: React.createElement
@@ -140,23 +226,16 @@
     return Object.values(plugins).find((p) => p?.customEntries && typeof p.buildEntry === 'function') || null;
   }
 
-  function ZycordHexIcon({ size = 20, gradientId = 'zycord-icon-grad' }) {
+  function SidebarHexIcon({ size = 20 }) {
     const { r } = getWebpackUi();
     return r('svg', {
       width: size,
       height: size,
       viewBox: '0 0 24 24',
+      fill: 'currentColor',
       'aria-hidden': true
     },
-      r('defs', null,
-        r('linearGradient', { id: gradientId, x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
-          r('stop', { offset: '0%', stopColor: '#5865F2' }),
-          r('stop', { offset: '45%', stopColor: '#7C5CFF' }),
-          r('stop', { offset: '100%', stopColor: '#EB459E' })
-        )
-      ),
       r('path', {
-        fill: `url(#${gradientId})`,
         d: 'M12 2 2 7v10l10 5 10-5V7L12 2zm0 2.2 7.5 3.75V16.3L12 20.05 4.5 16.3V7.95L12 4.2z'
       })
     );
@@ -164,20 +243,18 @@
 
   function registerBadge() {
     const badges = window.Vencord?.Api?.Badges;
-    if (!badges?.addProfileBadge) {
+    if (!badges?.addProfileBadge || window.__ZYCORD_BADGE_REGISTERED__) {
       return;
     }
 
-    const { addProfileBadge, BadgePosition } = badges;
-
-    if (window.__ZYCORD_BADGE_REGISTERED__) {
-      return;
-    }
     window.__ZYCORD_BADGE_REGISTERED__ = true;
+    const { addProfileBadge, BadgePosition } = badges;
     const { r, React } = getWebpackUi();
 
     function ZycordProfileBadge() {
-      const gradientId = React.useId ? `zycord-badge-${React.useId().replace(/:/g, '')}` : `zycord-badge-${Math.random().toString(36).slice(2)}`;
+      const gradientId = React.useId
+        ? `zycord-badge-${React.useId().replace(/:/g, '')}`
+        : `zycord-badge-${Math.random().toString(36).slice(2)}`;
 
       return r('div', { className: 'zycord-profile-badge', 'aria-label': 'ZyCord' },
         r('svg', { width: 22, height: 22, viewBox: '0 0 24 24' },
@@ -216,7 +293,7 @@
     }
 
     const ui = getWebpackUi();
-    const { Button, FormTitle, FormText, FormDivider, Margins, Flex, Toasts, React, r } = ui;
+    const { Button, FormTitle, FormText, FormDivider, Margins, Toasts, React, r } = ui;
     const { useState, useEffect } = React;
 
     function showToast(message, type = 'message') {
@@ -229,15 +306,50 @@
       });
     }
 
-    function RepoLink({ children, href }) {
+    function ExternalLink({ href, children }) {
       return r('a', {
-        className: 'zycord-repo-link',
+        className: 'zycord-link',
         href,
         onClick: (e) => {
           e.preventDefault();
           openExternal(href);
         }
       }, children);
+    }
+
+    function PanelShell({ title, description, children }) {
+      return r('div', { className: `${SECTION_CLASS} zycord-panel` },
+        r('div', { className: 'zycord-header' },
+          FormTitle && r(FormTitle, { tag: 'h1' }, title),
+          description && FormText && r(FormText, { className: 'zycord-muted' }, description)
+        ),
+        children
+      );
+    }
+
+    function SectionBlock({ title, children }) {
+      return r('div', { className: 'zycord-block' },
+        title && FormTitle && r(FormTitle, { tag: 'h5', className: 'zycord-block-title' }, title),
+        children
+      );
+    }
+
+    function InfoCard({ rows }) {
+      return r('div', { className: 'zycord-card' },
+        ...rows.map(({ label, value }, index) =>
+          r('div', { key: index, className: 'zycord-card-row' },
+            r('span', { className: 'zycord-card-label' }, label),
+            r('span', { className: 'zycord-card-value' }, value)
+          )
+        )
+      );
+    }
+
+    function StatusLine({ state, text }) {
+      return r('div', { className: 'zycord-status' },
+        r('span', { className: `zycord-status-dot ${state}` }),
+        text
+      );
     }
 
     function QuickActionPill({ icon: Icon, text, onClick, disabled }) {
@@ -274,64 +386,42 @@
       return { busy, run };
     }
 
-    function SourceCodeIcon(props) {
-      return r('svg', { ...props, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true },
-        r('path', { d: 'M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z' })
+    function iconPath(d) {
+      return (props) => r('svg', { ...props, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true },
+        r('path', { d })
       );
     }
 
-    function BuildIcon(props) {
-      return r('svg', { ...props, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true },
-        r('path', { d: 'M22.7 19.3 12 2 1.3 19.3h21.4zM12 18l-5.5-9h11L12 18z' })
-      );
-    }
+    const SourceCodeIcon = iconPath('M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z');
+    const BuildIcon = iconPath('M22.7 19.3 12 2 1.3 19.3h21.4zM12 18l-5.5-9h11L12 18z');
+    const InstallIcon = iconPath('M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z');
+    const UninstallIcon = iconPath('M19 13H5v-2h14v2z');
+    const RestartIcon = iconPath('M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z');
+    const PluginsIcon = iconPath('M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z');
+    const UpdatesIcon = RestartIcon;
+    const ZycordIcon = SidebarHexIcon;
 
-    function InstallIcon(props) {
-      return r('svg', { ...props, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true },
-        r('path', { d: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z' })
-      );
-    }
-
-    function UninstallIcon(props) {
-      return r('svg', { ...props, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true },
-        r('path', { d: 'M19 13H5v-2h14v2z' })
-      );
-    }
-
-    function RestartIcon(props) {
-      return r('svg', { ...props, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true },
-        r('path', { d: 'M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z' })
-      );
-    }
-
-    function PluginsIcon() {
-      return r('svg', { width: 20, height: 20, viewBox: '0 0 24 24', 'aria-hidden': true },
-        r('path', { fill: 'currentColor', d: 'M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z' })
-      );
-    }
-
-    function UpdatesIcon() {
-      return r('svg', { width: 20, height: 20, viewBox: '0 0 24 24', 'aria-hidden': true },
-        r('path', { fill: 'currentColor', d: 'M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z' })
-      );
-    }
-
-    function ZycordIcon() {
-      return r(ZycordHexIcon, { size: 20, gradientId: 'zycord-sidebar-grad' });
+    function ActionButton({ children, disabled, onClick, look }) {
+      if (!Button) {
+        return r('button', { disabled, onClick, className: 'zycord-link' }, children);
+      }
+      return r(Button, {
+        size: Button.Sizes?.SMALL,
+        look: look === 'secondary' ? Button.Looks?.LINK : Button.Looks?.FILLED,
+        color: look === 'secondary' ? Button.Colors?.PRIMARY : Button.Colors?.BRAND,
+        disabled,
+        onClick
+      }, children);
     }
 
     function PluginsPanel() {
       const { busy, run } = useSilentCommand();
 
-      return r('div', { className: SECTION_CLASS },
-        FormTitle && r(FormTitle, { tag: 'h1' }, 'Plugins'),
-        FormText && r(FormText, {
-          type: 'description',
-          className: Margins.marginBottom20,
-          style: { color: 'var(--text-muted)' }
-        }, 'Manage installed plugins.'),
-        r('section', null,
-          FormTitle && r(FormTitle, { tag: 'h5' }, 'Quick Actions'),
+      return r(PanelShell, {
+        title: 'Plugins',
+        description: 'Manage installed plugins.'
+      },
+        r(SectionBlock, { title: 'Quick Actions' },
           r(QuickActionsCard, null,
             r(QuickActionPill, {
               icon: BuildIcon,
@@ -352,15 +442,11 @@
     function ZycordPanel() {
       const { busy, run } = useSilentCommand();
 
-      return r('div', { className: SECTION_CLASS },
-        FormTitle && r(FormTitle, { tag: 'h1' }, 'ZyCord'),
-        FormText && r(FormText, {
-          type: 'description',
-          className: Margins.marginBottom20,
-          style: { color: 'var(--text-muted)' }
-        }, 'Core install and runtime controls.'),
-        r('section', null,
-          FormTitle && r(FormTitle, { tag: 'h5' }, 'Quick Actions'),
+      return r(PanelShell, {
+        title: 'ZyCord',
+        description: 'Core install and runtime controls.'
+      },
+        r(SectionBlock, { title: 'Quick Actions' },
           r(QuickActionsCard, null,
             r(QuickActionPill, {
               icon: InstallIcon,
@@ -391,15 +477,17 @@
     }
 
     function CommitLink({ hash, fullHash, repo }) {
-      if (!hash) return 'unknown';
+      if (!hash) return '—';
       const href = `${repo || DEFAULT_REPO_URL}/commit/${fullHash || hash}`;
-      return r(RepoLink, { href }, hash);
+      return r(ExternalLink, { href }, r('code', null, hash));
     }
 
     function UpdatesPanel() {
       const [info, setInfo] = useState(null);
       const [checking, setChecking] = useState(true);
+      const [pulling, setPulling] = useState(false);
       const [error, setError] = useState(null);
+      const { run } = useSilentCommand();
 
       async function check() {
         setChecking(true);
@@ -412,8 +500,22 @@
           }
         } catch (err) {
           setError(String(err.message || err));
+          setInfo(null);
         } finally {
           setChecking(false);
+        }
+      }
+
+      async function pullUpdate() {
+        setPulling(true);
+        try {
+          await runCommand('pull');
+          showToast('Update installed. Relaunch Discord to apply.', 'success');
+          await check();
+        } catch (err) {
+          showToast(String(err.message || err), 'failure');
+        } finally {
+          setPulling(false);
         }
       }
 
@@ -421,67 +523,78 @@
         check();
       }, []);
 
-      const hasUpdate = info && info.upToDate === false;
       const repo = info?.repo || DEFAULT_REPO_URL;
-      const repoSlug = info?.repoSlug || repo.replace('https://github.com/', '');
-      const versionLabel = info?.version ? `v${info.version}` : null;
+      const repoSlug = info?.repoSlug || 'cryphor/ZyLord';
+      const hasUpdate = info?.upToDate === false;
+      const busy = checking || pulling;
 
-      return r('div', { className: SECTION_CLASS },
-        FormTitle && r(FormTitle, { tag: 'h1' }, 'Updates'),
+      let statusState = 'load';
+      let statusText = 'Checking for updates...';
+
+      if (!checking && error) {
+        statusState = 'err';
+        statusText = 'Could not check for updates';
+      } else if (!checking && info?.upToDate === true) {
+        statusState = 'ok';
+        statusText = 'Up to Date!';
+      } else if (!checking && hasUpdate) {
+        statusState = 'warn';
+        statusText = 'Update available';
+      } else if (!checking && info && info.upToDate == null && !error) {
+        statusState = 'warn';
+        statusText = 'Installed version recorded';
+      }
+
+      return r(PanelShell, {
+        title: 'Updates',
+        description: 'Version info and release status.'
+      },
+        r(SectionBlock, { title: 'Repository' },
+          r(InfoCard, {
+            rows: [
+              {
+                label: 'Repo',
+                value: r(ExternalLink, { href: repo }, repoSlug)
+              },
+              {
+                label: 'Version',
+                value: info?.version ? `v${info.version}` : (checking ? '...' : '—')
+              },
+              {
+                label: 'Installed',
+                value: checking
+                  ? '...'
+                  : (info?.commit
+                    ? r(CommitLink, { hash: info.commit, fullHash: info.commitFull, repo })
+                    : '—')
+              }
+            ]
+          })
+        ),
         FormDivider && r(FormDivider, { className: Margins.marginBottom20 }),
-        FormTitle && r(FormTitle, { tag: 'h5' }, 'Repo'),
-        FormText && r(FormText, null,
-          r(RepoLink, { href: repo }, repoSlug),
-          ' ',
-          versionLabel && `(${versionLabel})`,
-          info?.commit && [
-            ' (',
-            r(CommitLink, { hash: info.commit, fullHash: info.commitFull, repo }),
-            ')'
-          ]
-        ),
-        FormDivider && r(FormDivider, { className: `${Margins.marginTop16 || ''} ${Margins.marginBottom16 || ''}`.trim() }),
-        FormTitle && r(FormTitle, { tag: 'h5' }, 'Updates'),
-        error && FormText && r(FormText, { className: Margins.marginBottom8 },
-          'Failed to check updates. ',
-          error
-        ),
-        !error && FormText && r(FormText, { className: Margins.marginBottom8 },
-          checking ? 'Checking...' : (hasUpdate ? 'There is 1 Update' : 'Up to Date!')
-        ),
-        hasUpdate && r('div', { style: { padding: '0 0.5em' } },
-          r('div', { className: 'zycord-update-entry' },
-            r('code', null,
+        r(SectionBlock, { title: 'Status' },
+          r('div', { className: 'zycord-card' },
+            r(StatusLine, { state: statusState, text: statusText }),
+            error && r('div', { className: 'zycord-update-meta' }, error),
+            hasUpdate && r('div', { className: 'zycord-update-item' },
               r(CommitLink, {
                 hash: info.remoteCommit,
                 fullHash: info.remoteCommitFull,
                 repo
-              })
-            ),
-            r('span', { className: 'zycord-update-message' },
-              info.message,
-              info.author ? ` - ${info.author}` : ''
+              }),
+              info.message && r('div', null, info.message),
+              info.author && r('div', { className: 'zycord-update-meta' }, info.author)
             )
+          ),
+          r('div', { className: 'zycord-actions' },
+            r(ActionButton, { disabled: busy, onClick: check }, checking ? 'Checking...' : 'Check for Updates'),
+            hasUpdate && r(ActionButton, {
+              disabled: busy,
+              onClick: pullUpdate,
+              look: 'secondary'
+            }, pulling ? 'Updating...' : 'Update Now')
           )
-        ),
-        Flex
-          ? r(Flex, { className: `${Margins.marginTop8 || ''} ${Margins.marginBottom8 || ''}`.trim() },
-            Button && r(Button, {
-              size: Button.Sizes?.SMALL,
-              look: Button.Looks?.FILLED,
-              color: Button.Colors?.BRAND,
-              disabled: checking,
-              onClick: check
-            }, checking ? 'Checking...' : 'Check for Updates')
-          )
-          : Button && r(Button, {
-            size: Button.Sizes?.SMALL,
-            look: Button.Looks?.FILLED,
-            color: Button.Colors?.BRAND,
-            disabled: checking,
-            onClick: check,
-            style: { marginTop: 8 }
-          }, checking ? 'Checking...' : 'Check for Updates')
+        )
       );
     }
 

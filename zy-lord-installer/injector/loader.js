@@ -55,7 +55,44 @@ function parseGithubSlug(url) {
   return match ? match[1].replace(/\.git$/, '') : null;
 }
 
+async function findGitRoot(startDir) {
+  let dir = path.resolve(startDir);
+  const { root } = path.parse(dir);
+
+  while (true) {
+    if (await fsExtra.pathExists(path.join(dir, '.git'))) {
+      return dir;
+    }
+    if (dir === root) {
+      break;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+
+  return null;
+}
+
 async function getRepoSlug() {
+  const gitRoot = await findGitRoot(zycordRoot);
+
+  if (gitRoot) {
+    try {
+      const git = simpleGit(gitRoot);
+      const remotes = await git.getRemotes(true);
+      const origin = remotes.find((remote) => remote.name === 'origin');
+      const slug = parseGithubSlug(origin?.refs?.fetch);
+      if (slug) {
+        return slug;
+      }
+    } catch (err) {
+      log(`Could not read git remote: ${err.message}`);
+    }
+  }
+
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(zycordRoot, 'package.json'), 'utf8'));
     const slug = parseGithubSlug(pkg.repository?.url || pkg.homepage);
@@ -63,20 +100,6 @@ async function getRepoSlug() {
       return slug;
     }
   } catch {}
-
-  try {
-    if (await fsExtra.pathExists(path.join(zycordRoot, '.git'))) {
-      const git = simpleGit(zycordRoot);
-      const remotes = await git.getRemotes(true);
-      const origin = remotes.find((remote) => remote.name === 'origin');
-      const slug = parseGithubSlug(origin?.refs?.fetch);
-      if (slug) {
-        return slug;
-      }
-    }
-  } catch (err) {
-    log(`Could not read git remote: ${err.message}`);
-  }
 
   return DEFAULT_REPO_SLUG;
 }
@@ -114,45 +137,121 @@ async function getLocalVersionInfo() {
   let commit = null;
   let commitFull = null;
 
-  try {
-    if (await fsExtra.pathExists(path.join(zycordRoot, '.git'))) {
-      const git = simpleGit(zycordRoot);
+  const gitRoot = await findGitRoot(zycordRoot);
+  if (gitRoot) {
+    try {
+      const git = simpleGit(gitRoot);
       commitFull = (await git.revparse(['HEAD'])).trim();
       commit = commitFull.slice(0, 7);
+    } catch (err) {
+      log(`Could not read local git commit: ${err.message}`);
     }
-  } catch (err) {
-    log(`Could not read local git commit: ${err.message}`);
   }
 
-  return { version, commit, commitFull, repo, repoSlug };
+  if (!commitFull && patchInfo.installedCommit) {
+    commitFull = String(patchInfo.installedCommit).trim();
+    commit = commitFull.slice(0, 7);
+  }
+
+  return { version, commit, commitFull, repo, repoSlug, gitRoot };
+}
+
+async function fetchRemoteMainInfo(repoSlug, gitRoot) {
+  const repoUrl = `https://github.com/${repoSlug}.git`;
+  const remoteGit = simpleGit();
+  const remoteOut = await remoteGit.listRemote([repoUrl, 'refs/heads/main']);
+  const remoteLine = remoteOut.trim().split('\n').find((line) => line.includes('refs/heads/main'));
+
+  if (!remoteLine) {
+    throw new Error('Could not resolve remote main branch');
+  }
+
+  const remoteCommitFull = remoteLine.split('\t')[0].trim();
+  let message = null;
+  let author = null;
+
+  if (gitRoot) {
+    try {
+      const localGit = simpleGit(gitRoot);
+      await localGit.raw(['fetch', '--depth', '1', repoUrl, `+refs/heads/main:refs/remotes/zycord-upstream/main`]);
+      const log = await localGit.log({ from: 'refs/remotes/zycord-upstream/main', to: 'refs/remotes/zycord-upstream/main', maxCount: 1 });
+      if (log.latest) {
+        message = log.latest.message.split('\n')[0];
+        author = log.latest.author_name;
+      }
+    } catch (err) {
+      log(`Could not read remote commit via git fetch: ${err.message}`);
+    }
+  }
+
+  if (!message) {
+    try {
+      const res = await fetchJson(`https://api.github.com/repos/${repoSlug}/commits/${remoteCommitFull}`);
+      if (res.ok) {
+        message = (res.data.commit?.message || '').split('\n')[0];
+        author = res.data.commit?.author?.name || res.data.author?.login || null;
+      }
+    } catch (err) {
+      log(`GitHub API fallback failed: ${err.message}`);
+    }
+  }
+
+  return {
+    remoteCommitFull,
+    remoteCommit: remoteCommitFull.slice(0, 7),
+    message,
+    author
+  };
 }
 
 async function checkRemoteUpdates() {
   const local = await getLocalVersionInfo();
 
   try {
-    const apiUrl = `https://api.github.com/repos/${local.repoSlug}/commits/main`;
-    const res = await fetchJson(apiUrl);
+    const remote = await fetchRemoteMainInfo(local.repoSlug, local.gitRoot);
+    let upToDate = null;
+    let hasUpdate = false;
 
-    if (!res.ok) {
-      return { ...local, upToDate: null, error: `GitHub returned ${res.status}` };
+    if (local.commitFull) {
+      if (local.commitFull === remote.remoteCommitFull) {
+        upToDate = true;
+      } else if (local.gitRoot) {
+        try {
+          const git = simpleGit(local.gitRoot);
+          const behindOut = await git.raw(['rev-list', '--count', `${local.commitFull}..${remote.remoteCommitFull}`]);
+          const behind = parseInt(String(behindOut).trim(), 10) || 0;
+          hasUpdate = behind > 0;
+          upToDate = !hasUpdate;
+        } catch (err) {
+          log(`Could not compare commits: ${err.message}`);
+          hasUpdate = false;
+          upToDate = null;
+        }
+      }
     }
 
-    const data = res.data;
-    const remoteCommitFull = data.sha;
-    const remoteCommit = remoteCommitFull.slice(0, 7);
-    const hasUpdate = Boolean(local.commitFull && remoteCommitFull !== local.commitFull);
-
     return {
-      ...local,
-      upToDate: local.commitFull ? !hasUpdate : null,
-      remoteCommit,
-      remoteCommitFull,
-      message: hasUpdate ? (data.commit?.message || '').split('\n')[0] : null,
-      author: hasUpdate ? (data.commit?.author?.name || data.author?.login || null) : null
+      version: local.version,
+      commit: local.commit,
+      commitFull: local.commitFull,
+      repo: local.repo,
+      repoSlug: local.repoSlug,
+      upToDate,
+      remoteCommit: remote.remoteCommit,
+      remoteCommitFull: remote.remoteCommitFull,
+      message: hasUpdate ? remote.message : null,
+      author: hasUpdate ? remote.author : null
     };
   } catch (err) {
-    return { ...local, upToDate: null, error: err.message };
+    return {
+      version: local.version,
+      commit: local.commit,
+      commitFull: local.commitFull,
+      repo: local.repo,
+      repoSlug: local.repoSlug,
+      upToDate: null,
+      error: err.message
+    };
   }
 }
 

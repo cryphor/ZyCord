@@ -223,7 +223,39 @@ async function savePatchRuntimeInfo(installerRoot) {
   const info = await fs.readJson(infoPath);
   info.zycordRoot = installerRoot;
   info.nodePath = process.execPath;
+
+  const gitRoot = await findGitRoot(installerRoot);
+  if (gitRoot) {
+    try {
+      const git = simpleGit(gitRoot);
+      info.installedCommit = (await git.revparse(['HEAD'])).trim();
+    } catch (err) {
+      warn(`Could not record installed commit: ${err.message}`);
+    }
+  }
+
   await fs.writeJson(infoPath, info, { spaces: 2 });
+}
+
+async function findGitRoot(startDir) {
+  let dir = path.resolve(startDir);
+  const { root } = path.parse(dir);
+
+  while (true) {
+    if (await fs.pathExists(path.join(dir, '.git'))) {
+      return dir;
+    }
+    if (dir === root) {
+      break;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+
+  return null;
 }
 
 async function handleDown() {
