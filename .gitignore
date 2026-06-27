@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 *.log
+zy-lord-installer/debug.bat
+zy-lord-installer/.discord-extract/
+zy-lord-installer/injector/patch-info.json
