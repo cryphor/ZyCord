@@ -1,6 +1,8 @@
 # ZyLord
 
-ZyLord är en Discord client mod med Docker Compose-liknande installationssystem. ZyLord patchar din befintliga Discord-installation — ingen separat app eller extra fönster.
+Discord client mod with a Docker Compose-style installer. ZyLord patches your existing Discord installation — no separate app or extra window.
+
+**Repository:** [github.com/cryphor/ZyLord](https://github.com/cryphor/ZyLord)
 
 ## Kom igång
 
@@ -34,7 +36,7 @@ node index.js down    # Avinstallera och återställ Discord
 
 ## Användning
 
-Redigera `zy-lord.yml` för att konfigurera plugins och inställningar. Sätt `settings.discordPath` om Discord inte hittas automatiskt.
+Redigera `zy-lord.yml` för att konfigurera plugins och inställningar. Lägg till plugin-repos under `plugins:` — se [cryphor/ZyLord](https://github.com/cryphor/ZyLord) för exempel. Sätt `settings.discordPath` om Discord inte hittas automatiskt.
 
 Stäng Discord innan du kör `up` — patchningen skrivs till Discords `app.asar`.
 

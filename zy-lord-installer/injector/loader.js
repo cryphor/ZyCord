@@ -12,7 +12,7 @@ module.paths.unshift(path.join(zylordRoot, 'node_modules'));
 
 const fsExtra = require('fs-extra');
 const yaml = require('yaml');
-const { app } = require('electron');
+const { app, BrowserWindow } = require('electron');
 
 const CONFIG_FILE = path.join(zylordRoot, 'zy-lord.yml');
 const PLUGINS_DIR = path.join(zylordRoot, 'plugins');
@@ -79,6 +79,8 @@ app.on('browser-window-created', (_event, window) => {
   hookWindow(window);
 });
 
-for (const window of app.getAllWindows()) {
-  hookWindow(window);
-}
+app.whenReady().then(() => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    hookWindow(window);
+  }
+});

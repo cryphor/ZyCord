@@ -1,14 +1,7 @@
 version: '1.0'
 
-plugins:
-  zy-lord-core:
-    source: https://github.com/zy-lord/core-plugin.git
-    version: latest
-    enabled: true
-  custom-theme:
-    source: https://github.com/zy-lord/theme-plugin.git
-    version: 1.2.0
-    enabled: false
+# Add plugin repos here — see https://github.com/cryphor/ZyLord
+plugins: {}
 
 settings:
   discordPath: ''

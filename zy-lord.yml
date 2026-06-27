@@ -1,9 +1,7 @@
 version: "1.0"
-plugins:
-  zy-lord-core:
-    source: https://github.com/zy-lord/core-plugin.git
-    version: latest
-    enabled: true
+
+plugins: {}
+
 settings:
   discordPath: ""
   autoUpdate: true

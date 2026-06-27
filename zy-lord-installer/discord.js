@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 const asar = require('asar');
 const chalk = require('chalk');
+const { log, warn, error } = require('./logger');
 
 const PATCH_MARKER = 'zy-lord-injector';
 const PATCH_INFO_FILE = 'patch-info.json';
@@ -147,24 +148,26 @@ async function patchDiscord(installerRoot, customDiscordPath) {
   }
 
   if (await isDiscordPatched(discordPath)) {
-    console.log(chalk.yellow('Discord is already patched.'));
+    log(chalk.yellow('Discord is already patched.'));
     await writePatchInfo(installerRoot, discordPath);
     return discordPath;
   }
 
   if (!await fs.pathExists(backupPath)) {
-    console.log(chalk.cyan('Backing up original Discord app.asar...'));
+    log(chalk.cyan('Backing up original Discord app.asar...'));
     await fs.copy(asarPath, backupPath);
+    log(`Backup saved to ${backupPath}`);
   }
 
   const extractDir = path.join(installerRoot, '.discord-extract');
   await fs.remove(extractDir);
   await fs.ensureDir(extractDir);
 
-  console.log(chalk.cyan('Patching Discord...'));
+  log(chalk.cyan(`Extracting Discord app.asar from ${asarPath}...`));
   await asar.extractAll(asarPath, extractDir);
 
   const mainFile = await findMainFile(extractDir);
+  log(`Injecting loader into ${path.basename(mainFile)}`);
   let mainContent = await fs.readFile(mainFile, 'utf8');
 
   if (!mainContent.includes(PATCH_MARKER)) {
@@ -173,11 +176,12 @@ async function patchDiscord(installerRoot, customDiscordPath) {
     await fs.writeFile(mainFile, mainContent);
   }
 
+  log(chalk.cyan('Repacking Discord app.asar...'));
   await asar.createPackage(extractDir, asarPath);
   await fs.remove(extractDir);
   await writePatchInfo(installerRoot, discordPath);
 
-  console.log(chalk.green(`Discord patched at ${discordPath}`));
+  log(chalk.green(`Discord patched at ${discordPath}`));
   return discordPath;
 }
 
@@ -186,7 +190,7 @@ async function unpatchDiscord(installerRoot) {
   const discordPath = patchInfo?.discordPath || await findDiscordInstall();
 
   if (!discordPath) {
-    console.log(chalk.yellow('No Discord installation found to restore.'));
+    warn(chalk.yellow('No Discord installation found to restore.'));
     return;
   }
 
@@ -195,15 +199,16 @@ async function unpatchDiscord(installerRoot) {
   const backupPath = path.join(resourcesDir, BACKUP_NAME);
 
   if (!await fs.pathExists(backupPath)) {
-    console.log(chalk.yellow('No Discord backup found — nothing to restore.'));
+    warn(chalk.yellow('No Discord backup found — nothing to restore.'));
     return;
   }
 
+  log('Restoring original Discord app.asar...');
   await fs.copy(backupPath, asarPath);
   await fs.remove(backupPath);
   await fs.remove(getPatchInfoPath(installerRoot));
 
-  console.log(chalk.green('Discord restored to original state.'));
+  log(chalk.green('Discord restored to original state.'));
 }
 
 function launchDiscord(customDiscordPath) {
@@ -217,6 +222,7 @@ function launchDiscord(customDiscordPath) {
       throw new Error(`Discord.exe not found at ${discordExe}`);
     }
 
+    log(`Launching Discord: ${discordExe}`);
     const child = spawn(discordExe, [], {
       detached: true,
       stdio: 'ignore'
