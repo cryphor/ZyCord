@@ -7,6 +7,6 @@ set START_EXIT=%ERRORLEVEL%
 echo start exit code: %START_EXIT%
 if %START_EXIT% NEQ 0 (
     echo.
-    echo Failed to start Discord. Check zy-lord.log for details.
+    echo Failed to start Discord. Check zycord.log for details.
     pause
 )
