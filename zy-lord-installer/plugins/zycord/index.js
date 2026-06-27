@@ -2,7 +2,7 @@
   'use strict';
 
   const ZYCORD_API = 'http://127.0.0.1:47653';
-  const DEFAULT_REPO_URL = 'https://github.com/cryphor/ZyCord';
+  const DEFAULT_REPO_URL = 'https://github.com/cryphor/ZyLord';
   const SECTION_CLASS = 'section_409aa';
   const CREATOR_UID = '1200586798871621763';
   const BADGE_ID = 'zycord_creator_badge';

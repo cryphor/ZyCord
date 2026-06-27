@@ -23,7 +23,7 @@ const CONFIG_CANDIDATES = ['zycord.yml', 'zy-lord.yml'];
 const PLUGINS_DIR = path.join(zycordRoot, 'plugins');
 const COMMAND_PORT = 47653;
 const ALLOWED_COMMANDS = new Set(['up', 'down', 'pull', 'ps', 'start', 'build', 'logs']);
-const DEFAULT_REPO_SLUG = 'cryphor/ZyCord';
+const DEFAULT_REPO_SLUG = 'cryphor/ZyLord';
 
 function resolveConfigFile() {
   for (const file of CONFIG_CANDIDATES) {
@@ -57,6 +57,14 @@ function parseGithubSlug(url) {
 
 async function getRepoSlug() {
   try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(zycordRoot, 'package.json'), 'utf8'));
+    const slug = parseGithubSlug(pkg.repository?.url || pkg.homepage);
+    if (slug) {
+      return slug;
+    }
+  } catch {}
+
+  try {
     if (await fsExtra.pathExists(path.join(zycordRoot, '.git'))) {
       const git = simpleGit(zycordRoot);
       const remotes = await git.getRemotes(true);
@@ -69,14 +77,6 @@ async function getRepoSlug() {
   } catch (err) {
     log(`Could not read git remote: ${err.message}`);
   }
-
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(zycordRoot, 'package.json'), 'utf8'));
-    const slug = parseGithubSlug(pkg.repository?.url || pkg.homepage);
-    if (slug) {
-      return slug;
-    }
-  } catch {}
 
   return DEFAULT_REPO_SLUG;
 }
