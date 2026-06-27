@@ -2,6 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
 
 const patchInfoPath = path.join(__dirname, 'patch-info.json');
@@ -15,12 +16,14 @@ module.paths.unshift(path.join(zycordRoot, 'node_modules'));
 
 const fsExtra = require('fs-extra');
 const yaml = require('yaml');
+const simpleGit = require('simple-git');
 const { app, BrowserWindow } = require('electron');
 
 const CONFIG_CANDIDATES = ['zycord.yml', 'zy-lord.yml'];
 const PLUGINS_DIR = path.join(zycordRoot, 'plugins');
 const COMMAND_PORT = 47653;
 const ALLOWED_COMMANDS = new Set(['up', 'down', 'pull', 'ps', 'start', 'build', 'logs']);
+const DEFAULT_REPO_SLUG = 'cryphor/ZyCord';
 
 function resolveConfigFile() {
   for (const file of CONFIG_CANDIDATES) {
@@ -36,6 +39,121 @@ const CONFIG_FILE = resolveConfigFile();
 
 function log(message) {
   console.log(`[Zycord] ${message}`);
+}
+
+function readPackageVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(zycordRoot, 'package.json'), 'utf8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+function parseGithubSlug(url) {
+  const match = String(url || '').match(/github\.com[:/]([^/]+\/[^/.]+)/);
+  return match ? match[1].replace(/\.git$/, '') : null;
+}
+
+async function getRepoSlug() {
+  try {
+    if (await fsExtra.pathExists(path.join(zycordRoot, '.git'))) {
+      const git = simpleGit(zycordRoot);
+      const remotes = await git.getRemotes(true);
+      const origin = remotes.find((remote) => remote.name === 'origin');
+      const slug = parseGithubSlug(origin?.refs?.fetch);
+      if (slug) {
+        return slug;
+      }
+    }
+  } catch (err) {
+    log(`Could not read git remote: ${err.message}`);
+  }
+
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(zycordRoot, 'package.json'), 'utf8'));
+    const slug = parseGithubSlug(pkg.repository?.url || pkg.homepage);
+    if (slug) {
+      return slug;
+    }
+  } catch {}
+
+  return DEFAULT_REPO_SLUG;
+}
+
+function fetchJson(url) {
+  if (typeof fetch === 'function') {
+    return fetch(url, {
+      headers: { 'User-Agent': 'Zycord-Updater', Accept: 'application/vnd.github+json' }
+    }).then(async (res) => ({
+      ok: res.ok,
+      status: res.status,
+      data: await res.json()
+    }));
+  }
+
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'User-Agent': 'Zycord-Updater', Accept: 'application/vnd.github+json' } }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, data: JSON.parse(body) });
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
+async function getLocalVersionInfo() {
+  const version = readPackageVersion();
+  const repoSlug = await getRepoSlug();
+  const repo = `https://github.com/${repoSlug}`;
+  let commit = null;
+  let commitFull = null;
+
+  try {
+    if (await fsExtra.pathExists(path.join(zycordRoot, '.git'))) {
+      const git = simpleGit(zycordRoot);
+      commitFull = (await git.revparse(['HEAD'])).trim();
+      commit = commitFull.slice(0, 7);
+    }
+  } catch (err) {
+    log(`Could not read local git commit: ${err.message}`);
+  }
+
+  return { version, commit, commitFull, repo, repoSlug };
+}
+
+async function checkRemoteUpdates() {
+  const local = await getLocalVersionInfo();
+
+  try {
+    const apiUrl = `https://api.github.com/repos/${local.repoSlug}/commits/main`;
+    const res = await fetchJson(apiUrl);
+
+    if (!res.ok) {
+      return { ...local, upToDate: null, error: `GitHub returned ${res.status}` };
+    }
+
+    const data = res.data;
+    const remoteCommitFull = data.sha;
+    const remoteCommit = remoteCommitFull.slice(0, 7);
+    const hasUpdate = Boolean(local.commitFull && remoteCommitFull !== local.commitFull);
+
+    return {
+      ...local,
+      upToDate: local.commitFull ? !hasUpdate : null,
+      remoteCommit,
+      remoteCommitFull,
+      message: hasUpdate ? (data.commit?.message || '').split('\n')[0] : null,
+      author: hasUpdate ? (data.commit?.author?.name || data.author?.login || null) : null
+    };
+  } catch (err) {
+    return { ...local, upToDate: null, error: err.message };
+  }
 }
 
 function runInstallerCommand(command) {
@@ -58,6 +176,11 @@ function runInstallerCommand(command) {
   });
 }
 
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
 function startCommandServer() {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -69,19 +192,35 @@ function startCommandServer() {
       return;
     }
 
-    const command = (req.url || '/').replace(/^\//, '').split('?')[0];
+    const route = (req.url || '/').replace(/^\//, '').split('?')[0];
 
-    if (req.method !== 'POST' || !ALLOWED_COMMANDS.has(command)) {
-      res.writeHead(404);
-      res.end(JSON.stringify({ ok: false, output: `Unknown command: ${command}` }));
+    if (req.method === 'GET' && route === 'version') {
+      try {
+        sendJson(res, 200, { ok: true, ...(await getLocalVersionInfo()) });
+      } catch (err) {
+        sendJson(res, 500, { ok: false, error: err.message });
+      }
       return;
     }
 
-    log(`Running command: ${command}`);
-    const result = await runInstallerCommand(command);
-    log(`Command ${command} finished with code ${result.code}`);
-    res.writeHead(result.ok ? 200 : 500);
-    res.end(JSON.stringify(result));
+    if (req.method === 'GET' && route === 'updates') {
+      try {
+        sendJson(res, 200, { ok: true, ...(await checkRemoteUpdates()) });
+      } catch (err) {
+        sendJson(res, 500, { ok: false, error: err.message });
+      }
+      return;
+    }
+
+    if (req.method !== 'POST' || !ALLOWED_COMMANDS.has(route)) {
+      sendJson(res, 404, { ok: false, error: `Unknown route: ${route}` });
+      return;
+    }
+
+    log(`Running command: ${route}`);
+    const result = await runInstallerCommand(route);
+    log(`Command ${route} finished with code ${result.code}`);
+    sendJson(res, result.ok ? 200 : 500, result);
   });
 
   server.listen(COMMAND_PORT, '127.0.0.1', () => {
