@@ -1,7 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 
-const LOG_FILE = path.join(__dirname, 'zy-lord.log');
+const LOG_FILE = path.join(__dirname, 'zycord.log');
 
 function stripAnsi(text) {
   return String(text).replace(/\x1b\[[0-9;]*m/g, '');
@@ -32,7 +32,7 @@ function error(message) {
 
 async function initLog() {
   await fs.ensureFile(LOG_FILE);
-  await writeLog('INFO', '--- ZyLord session started ---');
+  await writeLog('INFO', '--- ZyCord session started ---');
 }
 
 function getLogPath() {

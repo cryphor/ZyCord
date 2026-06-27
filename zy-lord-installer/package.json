@@ -1,7 +1,7 @@
 {
   "name": "zy-lord-installer",
   "version": "1.0.0",
-  "description": "ZyLord Discord Client Mod Installer",
+  "description": "ZyCord",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cryphor/ZyLord.git"

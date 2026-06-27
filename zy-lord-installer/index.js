@@ -7,8 +7,17 @@ const simpleGit = require('simple-git');
 const { patchDiscord, unpatchDiscord, launchDiscord, getDiscordStatus } = require('./discord');
 const { log, warn, error: logError, initLog, getLogPath } = require('./logger');
 
-const CONFIG_FILE = 'zy-lord.yml';
+const CONFIG_CANDIDATES = ['zycord.yml', 'zy-lord.yml'];
 const PLUGINS_DIR = 'plugins';
+
+async function resolveConfigPath() {
+  for (const file of CONFIG_CANDIDATES) {
+    if (await fs.pathExists(file)) {
+      return file;
+    }
+  }
+  return 'zycord.yml';
+}
 
 const COMMANDS = {
   up: { label: 'Install (up)', handler: handleUp },
@@ -34,14 +43,13 @@ async function main() {
 
   if (!quiet) {
     log(chalk.magenta(`
-  ███████╗██╗   ██╗██╗      ██████╗ ██████╗ ██████╗
-  ╚══███╔╝╚██╗ ██╔╝██║     ██╔═══██╗██╔══██╗██╔══██╗
-    ███╔╝  ╚████╔╝ ██║     ██║   ██║██████╔╝██║  ██║
-   ███╔╝    ╚██╔╝  ██║     ██║   ██║██╔══██╗██║  ██║
-  ███████╗   ██║   ███████╗╚██████╔╝██║  ██║██████╔╝
-  ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝
-  Discord Client Mod Installer - Docker Compose Style
-  `));
+  ███████╗██╗   ██╗ ██████╗ ██████╗ ██████╗ ██████╗
+  ╚══███╔╝╚██╗ ██╔╝██╔════╝██╔═══██╗██╔══██╗██╔══██╗
+    ███╔╝  ╚████╔╝ ██║     ██║   ██║██║  ██║██║  ██║
+   ███╔╝    ╚██╔╝  ██║     ██║   ██║██║  ██║██║  ██║
+  ███████╗   ██║   ╚██████╗╚██████╔╝██████╔╝██████╔╝
+  ╚══════╝   ╚═╝    ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝
+    `));
 
     await checkForUpdates();
   }
@@ -72,8 +80,9 @@ async function promptAction() {
 
 async function checkForUpdates() {
   log('Checking for updates...');
+  const configFile = await resolveConfigPath();
 
-  if (!await fs.pathExists(CONFIG_FILE)) {
+  if (!await fs.pathExists(configFile)) {
     return;
   }
 
@@ -86,7 +95,7 @@ async function checkForUpdates() {
   let updatesAvailable = false;
 
   for (const [name, plugin] of Object.entries(config.plugins || {})) {
-    if (!plugin.enabled) {
+    if (!plugin.enabled || plugin.local) {
       continue;
     }
 
@@ -118,30 +127,39 @@ async function checkForUpdates() {
 }
 
 async function loadConfig() {
-  if (!await fs.pathExists(CONFIG_FILE)) {
-    log(chalk.red(`Could not find ${CONFIG_FILE}. Creating default configuration...`));
+  const configFile = await resolveConfigPath();
+
+  if (!await fs.pathExists(configFile)) {
+    log(chalk.red(`Could not find ${configFile}. Creating default configuration...`));
     const defaultConfig = {
       version: '1.0',
-      plugins: {},
+      plugins: {
+        zycord: {
+          enabled: true,
+          local: true,
+          version: '1.0.0'
+        }
+      },
       settings: {
         discordPath: '',
         autoUpdate: true,
         theme: 'dark'
       }
     };
-    await fs.writeFile(CONFIG_FILE, yaml.stringify(defaultConfig, { indent: 2 }));
-    log(chalk.green(`Created ${CONFIG_FILE} with default configuration.`));
+    await fs.writeFile(configFile, yaml.stringify(defaultConfig, { indent: 2 }));
+    log(chalk.green(`Created ${configFile} with default configuration.`));
     return defaultConfig;
   }
 
-  const fileContent = await fs.readFile(CONFIG_FILE, 'utf8');
+  const fileContent = await fs.readFile(configFile, 'utf8');
   return yaml.parse(fileContent);
 }
 
 async function handleUp() {
-  log('Starting ZyLord installer...');
+  log('Installing...');
   const config = await loadConfig();
-  log(`Config loaded from ${CONFIG_FILE}`);
+  const configFile = await resolveConfigPath();
+  log(`Config loaded from ${configFile}`);
 
   await fs.ensureDir(PLUGINS_DIR);
   log(`Plugins directory: ${path.resolve(PLUGINS_DIR)}`);
@@ -152,12 +170,22 @@ async function handleUp() {
   }
 
   for (const [name, plugin] of Object.entries(config.plugins || {})) {
-    if (!plugin.enabled) {
+    if (!plugin.enabled || plugin.local) {
+      continue;
+    }
+
+    const pluginPath = path.join(PLUGINS_DIR, name);
+
+    if (plugin.local) {
+      if (await fs.pathExists(pluginPath)) {
+        log(chalk.green(`  ${name} ready (local)`));
+      } else {
+        logError(chalk.red(`  Local plugin missing: ${name}`));
+      }
       continue;
     }
 
     log(chalk.cyan(`Installing plugin: ${name}`));
-    const pluginPath = path.join(PLUGINS_DIR, name);
 
     try {
       if (await fs.pathExists(pluginPath)) {
@@ -173,20 +201,33 @@ async function handleUp() {
   }
 
   if (Object.keys(config.plugins || {}).some((name) => config.plugins[name].enabled)) {
-    log(chalk.green('Plugins installed successfully!'));
+    log(chalk.green('Plugins ready.'));
   }
 
   try {
     await patchDiscord(__dirname, config.settings?.discordPath);
-    log(chalk.green('ZyLord installed successfully! Open Discord as usual.'));
+    await savePatchRuntimeInfo(__dirname);
+    log(chalk.green('Done.'));
   } catch (err) {
     logError(chalk.red(`Failed to patch Discord: ${err.message}`));
     process.exit(1);
   }
 }
 
+async function savePatchRuntimeInfo(installerRoot) {
+  const infoPath = path.join(installerRoot, 'injector', 'patch-info.json');
+  if (!await fs.pathExists(infoPath)) {
+    return;
+  }
+
+  const info = await fs.readJson(infoPath);
+  info.zycordRoot = installerRoot;
+  info.nodePath = process.execPath;
+  await fs.writeJson(infoPath, info, { spaces: 2 });
+}
+
 async function handleDown() {
-  log('Stopping and uninstalling ZyLord...');
+  log('Uninstalling...');
 
   try {
     await unpatchDiscord(__dirname);
@@ -198,15 +239,15 @@ async function handleDown() {
     await fs.remove(PLUGINS_DIR);
   }
 
-  log(chalk.green('ZyLord uninstalled.'));
+  log(chalk.green('Done.'));
 }
 
 async function handleBuild() {
-  log('Building ZyLord...');
+  log('Building...');
   const config = await loadConfig();
 
   for (const [name, plugin] of Object.entries(config.plugins || {})) {
-    if (!plugin.enabled) {
+    if (!plugin.enabled || plugin.local) {
       continue;
     }
 
@@ -226,11 +267,11 @@ async function handleBuild() {
     }
   }
 
-  log(chalk.green('Build complete.'));
+  log(chalk.green('Done.'));
 }
 
 async function handlePs() {
-  log('Showing status...');
+  log('Status');
   const config = await loadConfig();
 
   const discordStatus = await getDiscordStatus(__dirname, config.settings?.discordPath);
@@ -257,11 +298,11 @@ async function handlePs() {
 }
 
 async function handlePull() {
-  log('Updating plugins...');
+  log('Updating...');
   const config = await loadConfig();
 
   for (const [name, plugin] of Object.entries(config.plugins || {})) {
-    if (!plugin.enabled) {
+    if (!plugin.enabled || plugin.local) {
       continue;
     }
 
@@ -280,12 +321,18 @@ async function handlePull() {
     }
   }
 
-  log(chalk.green('All plugins updated.'));
+  log(chalk.green('Done.'));
 }
 
 async function handleLogs() {
-  const logFile = path.join(__dirname, 'zy-lord.log');
+  const logFile = path.join(__dirname, 'zycord.log');
   if (!await fs.pathExists(logFile)) {
+    const legacyLog = path.join(__dirname, 'zy-lord.log');
+    if (await fs.pathExists(legacyLog)) {
+      const logs = await fs.readFile(legacyLog, 'utf8');
+      log(logs || '(empty)');
+      return;
+    }
     log(chalk.yellow('No log file found yet.'));
     return;
   }
@@ -296,6 +343,7 @@ async function handleLogs() {
 
 async function startDiscordClient() {
   log('Starting Discord...');
+  await savePatchRuntimeInfo(__dirname);
   const config = await loadConfig();
   let discordStatus = await getDiscordStatus(__dirname, config.settings?.discordPath);
 
@@ -324,7 +372,7 @@ async function startDiscordClient() {
   }
 
   const launchedFrom = await launchDiscord(config.settings?.discordPath);
-  log(chalk.green(`Discord launched from ${launchedFrom}`));
+  log(chalk.green('Started.'));
 }
 
 main().catch((err) => {

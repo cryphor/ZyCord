@@ -5,7 +5,8 @@ const asar = require('asar');
 const chalk = require('chalk');
 const { log, warn, error } = require('./logger');
 
-const PATCH_MARKER = 'zy-lord-injector';
+const PATCH_MARKER = 'zycord-injector';
+const LEGACY_PATCH_MARKER = 'zy-lord-injector';
 const PATCH_INFO_FILE = 'patch-info.json';
 const BACKUP_NAME = 'app.asar.zylord-backup';
 
@@ -64,6 +65,7 @@ function getPatchInfoPath(installerRoot) {
 async function writePatchInfo(installerRoot, discordPath) {
   const info = {
     discordPath,
+    zycordRoot: installerRoot,
     zylordRoot: installerRoot,
     patchedAt: new Date().toISOString()
   };
@@ -90,7 +92,8 @@ async function isDiscordPatched(discordPath) {
     const pkg = JSON.parse(contents.toString('utf8'));
     const mainFile = pkg.main || 'index.js';
     const mainContents = await asar.extractFile(asarPath, mainFile);
-    return mainContents.toString('utf8').includes(PATCH_MARKER);
+    return mainContents.toString('utf8').includes(PATCH_MARKER)
+      || mainContents.toString('utf8').includes(LEGACY_PATCH_MARKER);
   } catch {
     return false;
   }
@@ -144,7 +147,7 @@ async function patchDiscord(installerRoot, customDiscordPath) {
   }
 
   if (!await fs.pathExists(loaderPath)) {
-    throw new Error(`ZyLord loader not found at ${loaderPath}`);
+    throw new Error(`Zycord loader not found at ${loaderPath}`);
   }
 
   if (await isDiscordPatched(discordPath)) {
@@ -170,7 +173,7 @@ async function patchDiscord(installerRoot, customDiscordPath) {
   log(`Injecting loader into ${path.basename(mainFile)}`);
   let mainContent = await fs.readFile(mainFile, 'utf8');
 
-  if (!mainContent.includes(PATCH_MARKER)) {
+  if (!mainContent.includes(PATCH_MARKER) && !mainContent.includes(LEGACY_PATCH_MARKER)) {
     const injectLine = `require(${JSON.stringify(loaderPath)}); // ${PATCH_MARKER}\n`;
     mainContent = injectLine + mainContent;
     await fs.writeFile(mainFile, mainContent);

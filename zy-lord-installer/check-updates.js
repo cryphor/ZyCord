@@ -6,18 +6,28 @@ const simpleGit = require('simple-git');
 const chalk = require('chalk');
 const yaml = require('yaml');
 
-const CONFIG_FILE = 'zy-lord.yml';
+const CONFIG_CANDIDATES = ['zycord.yml', 'zy-lord.yml'];
 const PLUGINS_DIR = 'plugins';
+
+async function resolveConfigPath() {
+  for (const file of CONFIG_CANDIDATES) {
+    if (await fs.pathExists(file)) {
+      return file;
+    }
+  }
+  return null;
+}
 
 async function checkForUpdates() {
   console.log(chalk.blue('Checking for updates...'));
 
-  if (!await fs.pathExists(CONFIG_FILE)) {
+  const configFile = await resolveConfigPath();
+  if (!configFile) {
     console.log(chalk.red('Configuration file not found. Run the installer first.'));
     return;
   }
 
-  const fileContent = await fs.readFile(CONFIG_FILE, 'utf8');
+  const fileContent = await fs.readFile(configFile, 'utf8');
   const config = yaml.parse(fileContent);
 
   if (!await fs.pathExists(PLUGINS_DIR)) {
@@ -28,7 +38,7 @@ async function checkForUpdates() {
   let updatesAvailable = false;
 
   for (const [name, plugin] of Object.entries(config.plugins || {})) {
-    if (!plugin.enabled) {
+    if (!plugin.enabled || plugin.local) {
       continue;
     }
 

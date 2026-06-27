@@ -1,19 +1,17 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title ZyLord Installer
+title ZyCord
 cd /d "%~dp0"
 
-echo ========================================
-echo   ZyLord Installer
-echo ========================================
+echo ZyCord
 echo.
 
-echo [%date% %time%] Install started>> zy-lord.log
+echo [%date% %time%] Install started>> zycord.log
 
 where node >nul 2>&1
 if errorlevel 1 (
     echo ERROR: Node.js not found. Install it from https://nodejs.org
-    echo [%date% %time%] ERROR: Node.js not found>> zy-lord.log
+    echo [%date% %time%] ERROR: Node.js not found>> zycord.log
     goto finish
 )
 
@@ -64,19 +62,19 @@ if !NPM_EXIT! NEQ 0 (
     echo.
     echo ERROR: npm install failed ^(exit code !NPM_EXIT!^).
     echo Try closing Discord and any Electron apps, then run install.bat again.
-    echo [%date% %time%] ERROR: npm install failed with code !NPM_EXIT!>> zy-lord.log
+    echo [%date% %time%] ERROR: npm install failed with code !NPM_EXIT!>> zycord.log
     goto finish
 )
 
 echo.
-echo Installing ZyLord ^(patching Discord^)...
+echo Installing...
 call "!NODE_EXE!" index.js up --verbose
 set UP_EXIT=!ERRORLEVEL!
 echo index.js up exit code: !UP_EXIT!
 if !UP_EXIT! NEQ 0 (
     echo.
     echo ERROR: Installation failed ^(exit code !UP_EXIT!^).
-    echo [%date% %time%] ERROR: index.js up failed with code !UP_EXIT!>> zy-lord.log
+    echo [%date% %time%] ERROR: index.js up failed with code !UP_EXIT!>> zycord.log
     goto finish
 )
 
@@ -84,7 +82,7 @@ echo.
 echo Creating start.bat...
 (
 echo @echo off
-echo title ZyLord
+echo title ZyCord
 echo cd /d "%%~dp0"
 echo echo Starting Discord...
 echo "!NODE_EXE!" index.js start --verbose
@@ -92,15 +90,15 @@ echo set START_EXIT=%%ERRORLEVEL%%
 echo echo start exit code: %%START_EXIT%%
 echo if %%START_EXIT%% NEQ 0 (
 echo     echo.
-echo     echo Failed to start Discord. Check zy-lord.log for details.
+echo     echo Failed to start Discord. Check zycord.log for details.
 echo     pause
 echo ^)
 ) > start.bat
 
 echo.
-echo Installation complete!
-echo Log file: %~dp0zy-lord.log
-echo [%date% %time%] Install completed successfully>> zy-lord.log
+echo Done.
+echo Log file: %~dp0zycord.log
+echo [%date% %time%] Install completed successfully>> zycord.log
 
 :finish
 echo.

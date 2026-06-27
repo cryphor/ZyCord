@@ -1,5 +1,5 @@
 @echo off
-title ZyLord
+title ZyCord
 cd /d "%~dp0"
 echo Starting Discord...
 "C:\Program Files\nodejs\node.exe" index.js start --verbose

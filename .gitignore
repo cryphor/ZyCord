@@ -4,3 +4,5 @@ node_modules/
 zy-lord-installer/debug.bat
 zy-lord-installer/.discord-extract/
 zy-lord-installer/injector/patch-info.json
+zy-lord-installer/zycord.log
+zy-lord-installer/zy-lord.log
